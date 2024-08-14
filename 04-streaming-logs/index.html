@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>CI/CD Pipeline Dashboard</title>
+        <style>
+            :root {
+                --success-color: #4caf50;
+                --failure-color: #f44336;
+                --background-color: #f0f0f0;
+                --container-background: #fff;
+                --border-color: #ddd;
+                --text-color: #333;
+            }
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background-color: var(--background-color);
+                color: var(--text-color);
+            }
+            h1 {
+                text-align: center;
+            }
+            #log-container {
+                background-color: var(--container-background);
+                border: 1px solid var(--border-color);
+                border-radius: 5px;
+                padding: 10px;
+                height: 500px;
+                overflow-y: auto;
+            }
+            .log-entry {
+                margin-bottom: 10px;
+                padding: 10px;
+                background-color: var(--background-color);
+                border-radius: 3px;
+                border-left: 5px solid var(--border-color);
+            }
+            .log-entry.SUCCESS {
+                border-left-color: var(--success-color);
+            }
+            .log-entry.FAILURE {
+                border-left-color: var(--failure-color);
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>CI/CD Pipeline Dashboard</h1>
+        </header>
+        <main>
+            <section id="log-container"></section>
+        </main>
+
+        <script>
+            const logContainer = document.getElementById("log-container");
+
+            function createLogEntry(data) {
+                const logEntry = document.createElement("div");
+                logEntry.className = `log-entry ${data.status}`;
+                logEntry.textContent = `ID: ${data.id} | [${data.timestamp}] Project: ${data.project} | Stage: ${data.stage} | Environment: ${data.environment} | Status: ${data.status} | Duration: ${data.duration}`;
+                return logEntry;
+            }
+
+            function updateLogContainer(logEntry) {
+                logContainer.insertBefore(logEntry, logContainer.firstChild);
+                if (logContainer.children.length > 100) {
+                    logContainer.removeChild(logContainer.lastChild);
+                }
+            }
+
+            const eventSource = new EventSource("/stream");
+
+            eventSource.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                const logEntry = createLogEntry(data);
+                updateLogContainer(logEntry);
+            };
+
+            eventSource.onerror = function (error) {
+                console.error("EventSource failed:", error);
+                eventSource.close();
+            };
+        </script>
+    </body>
+</html>
