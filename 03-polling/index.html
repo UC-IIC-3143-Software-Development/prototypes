@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>EC2 Instance Dashboard</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f0f0f0;
+            }
+            h1 {
+                color: #333;
+                text-align: center;
+            }
+            #launchButton {
+                display: block;
+                margin: 20px auto;
+                padding: 10px 20px;
+                font-size: 16px;
+                background-color: #4caf50;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+            }
+            #launchButton:disabled {
+                background-color: #cccccc;
+            }
+            #instanceList {
+                list-style-type: none;
+                padding: 0;
+            }
+            .instance {
+                background-color: white;
+                margin-bottom: 10px;
+                padding: 15px;
+                border-radius: 5px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            .instance-id {
+                font-weight: bold;
+                color: #333;
+            }
+            .status {
+                display: inline-block;
+                padding: 5px 10px;
+                border-radius: 15px;
+                font-size: 0.8em;
+                margin-left: 10px;
+            }
+            .status-pending {
+                background-color: #ffc107;
+                color: #000;
+            }
+            .status-running {
+                background-color: #4caf50;
+                color: white;
+            }
+            .ip-address {
+                color: #666;
+                margin-top: 5px;
+            }
+            #errorMessage {
+                color: red;
+                text-align: center;
+                margin-top: 10px;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>EC2 Instance Dashboard</h1>
+        <button id="launchButton">Launch New EC2 Instance</button>
+        <div id="errorMessage"></div>
+        <ul id="instanceList"></ul>
+
+        <script>
+            const launchButton = document.getElementById("launchButton");
+            const instanceList = document.getElementById("instanceList");
+            const errorMessage = document.getElementById("errorMessage");
+            const instances = {};
+
+            const API_URL = window.location.origin;
+
+            launchButton.addEventListener("click", launchEC2);
+
+            async function launchEC2() {
+                errorMessage.textContent = "";
+                try {
+                    const response = await fetch(`${API_URL}/launch_ec2`, {
+                        method: "POST",
+                    });
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP error! status: ${response.status}`,
+                        );
+                    }
+                    const data = await response.json();
+                    const instanceId = data.instance_id;
+                    instances[instanceId] = {
+                        status: "pending",
+                        ip_address: null,
+                    };
+                    updateInstanceList();
+                    pollInstanceStatus(instanceId);
+                } catch (error) {
+                    console.error("Error launching EC2 instance:", error);
+                    errorMessage.textContent = `Error launching EC2 instance: ${error.message}`;
+                }
+            }
+
+            async function pollInstanceStatus(instanceId) {
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const response = await fetch(
+                            `${API_URL}/instance_status/${instanceId}`,
+                        );
+                        if (!response.ok) {
+                            throw new Error(
+                                `HTTP error! status: ${response.status}`,
+                            );
+                        }
+                        const data = await response.json();
+
+                        instances[instanceId] = data;
+                        updateInstanceList();
+
+                        if (data.status === "running") {
+                            clearInterval(pollInterval);
+                        }
+                    } catch (error) {
+                        console.error("Error checking instance status:", error);
+                        errorMessage.textContent = `Error checking instance status: ${error.message}`;
+                        clearInterval(pollInterval);
+                    }
+                }, 5000); // Polling cada 5 seconds
+            }
+
+            function updateInstanceList() {
+                instanceList.innerHTML = "";
+                for (const [id, instance] of Object.entries(instances)) {
+                    const li = document.createElement("li");
+                    li.className = "instance";
+                    li.innerHTML = `
+                    <div class="instance-id">Instance ID: ${id}</div>
+                    <span class="status status-${instance.status}">${instance.status}</span>
+                    ${instance.ip_address ? `<div class="ip-address">IP Address: ${instance.ip_address}</div>` : ""}
+                `;
+                    instanceList.appendChild(li);
+                }
+            }
+        </script>
+    </body>
+</html>
