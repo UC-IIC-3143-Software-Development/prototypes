@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: counter_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: counter_db
+    ports:
+      - "3306:3306"
+    command:
+      - --max-connections=150
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
