@@ -6,6 +6,9 @@ from utils import (get_counter_value, get_pooled_connection, reset_counter,
 
 
 def increment_counter(user_id):
+    conn = None
+    cursor = None
+
     try:
         conn = get_pooled_connection()
         cursor = conn.cursor()
@@ -15,10 +18,14 @@ def increment_counter(user_id):
 
         print(f"User {user_id} incremented the counter")
     except Exception as error:
+        # Agotar el pool es justamente lo que este demo muestra: debe fallar
+        # limpio, no con un traceback por cerrar un cursor que nunca se abrio.
         print(f"Error for user {user_id}: {error}")
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 def main():

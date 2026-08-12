@@ -98,7 +98,7 @@ def main():
     conn.commit()
     print("Datos insertados en la tabla 'employees'.")
 
-    print("\Query sin index")
+    print("\nQuery sin index")
     count, time = run_query(
         cursor, "SELECT * FROM employees WHERE emp_dob_month = %s", ("may",)
     )

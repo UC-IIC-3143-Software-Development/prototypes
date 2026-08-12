@@ -174,22 +174,28 @@ def main():
         f"ID - Null Fraction: {null_frac}, Distinct Values: {n_distinct}, Average Width: {avg_width}"
     )
 
-    # Consultas de rendimiento y tamaños
+    # Consultas de rendimiento y tamaños.
+    # Se busca un RUT que existe de verdad: generate_rut() devuelve por diseño
+    # uno que no esta en la tabla, y entonces las 3 consultas medirian un miss.
+    # Las 3 tablas se cargaron con los mismos RUT, asi que sirve para todas.
+    cursor.execute("SELECT rut FROM employees_rut LIMIT 1")
+    rut_existente = cursor.fetchone()[0]
+
     print("\nConsulta por RUT PK (employees_rut):")
     count, time = run_query(
-        cursor, "SELECT * FROM employees_rut WHERE rut = %s", (generate_rut(),)
+        cursor, "SELECT * FROM employees_rut WHERE rut = %s", (rut_existente,)
     )
     print(f"Se encontraron {count} registros en {time:.6f} segundos")
 
     print("\nConsulta por RUT ID SERIAL (employees_id):")
     count, time = run_query(
-        cursor, "SELECT * FROM employees_id WHERE rut = %s", (generate_rut(),)
+        cursor, "SELECT * FROM employees_id WHERE rut = %s", (rut_existente,)
     )
     print(f"Se encontraron {count} registros en {time:.6f} segundos")
 
     print("\nConsulta por RUT UUID (employees_uuid):")
     count, time = run_query(
-        cursor, "SELECT * FROM employees_uuid WHERE rut = %s", (generate_rut(),)
+        cursor, "SELECT * FROM employees_uuid WHERE rut = %s", (rut_existente,)
     )
     print(f"Se encontraron {count} registros en {time:.6f} segundos")
 

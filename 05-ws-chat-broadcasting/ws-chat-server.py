@@ -60,13 +60,17 @@ async def broadcast(message):
 
 def run_http_server():
     handler = SimpleHTTPRequestHandler
+    # Sin esto, reiniciar el servidor falla con "Address already in use"
+    # mientras el puerto siga en TIME_WAIT.
+    TCPServer.allow_reuse_address = True
     httpd = TCPServer(("", 8000), handler)
     print("Serving HTTP on port 8000...")
     httpd.serve_forever()
 
 
 async def main():
-    http_thread = threading.Thread(target=run_http_server)
+    # daemon=True: si no, Ctrl+C deja el proceso vivo colgado del thread HTTP.
+    http_thread = threading.Thread(target=run_http_server, daemon=True)
     http_thread.start()
 
     server = await websockets.serve(handle_client, "localhost", 8765)

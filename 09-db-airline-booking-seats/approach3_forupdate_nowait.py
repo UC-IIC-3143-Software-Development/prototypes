@@ -2,6 +2,7 @@ import threading
 import time
 
 import mysql.connector
+from mysql.connector import errorcode
 from utils import db_config, generate_users, print_seats, setup_database
 
 
@@ -10,14 +11,14 @@ def book(user_id, user_name):
     cursor = conn.cursor()
     try:
         cursor.execute("START TRANSACTION")
-        # FOR UPDATE NO WAIT: Pessimistic locking with no wait
+        # FOR UPDATE NOWAIT: Pessimistic locking with no wait
         try:
             cursor.execute(
                 """
                 SELECT id, seat_number FROM seats
                 WHERE user_id IS NULL
                 ORDER BY id LIMIT 1
-                FOR UPDATE NO WAIT
+                FOR UPDATE NOWAIT
             """
             )
             result = cursor.fetchone()
@@ -33,8 +34,12 @@ def book(user_id, user_name):
                 print(f"No seat available for {user_name}")
                 cursor.execute("COMMIT")
                 return None, user_name
-        except mysql.connector.errors.DatabaseError as lock_error:
-            # This error is raised when the row is locked
+        except mysql.connector.Error as lock_error:
+            # Solo ER_LOCK_NOWAIT (3572) es "el asiento estaba tomado". Cualquier
+            # otro error se deja propagar: si no, un error de sintaxis se reporta
+            # como lock y el demo muestra lo contrario de lo que enseña.
+            if lock_error.errno != errorcode.ER_LOCK_NOWAIT:
+                raise
             print(f"Seat was locked, couldn't book for {user_name}")
             cursor.execute("ROLLBACK")
             return None, user_name

@@ -6,6 +6,9 @@ from utils import (get_counter_value, get_non_pooled_connection, reset_counter,
 
 
 def increment_counter(user_id):
+    conn = None
+    cursor = None
+
     try:
         conn = get_non_pooled_connection()
         cursor = conn.cursor()
@@ -17,8 +20,10 @@ def increment_counter(user_id):
     except Exception as error:
         print(f"Error for user {user_id}: {error}")
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 def main():
