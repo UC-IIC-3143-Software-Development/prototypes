@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:13
+    container_name: postgres-buffer-cache-demo
+    environment:
+      POSTGRES_DB: buffer_cache_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      # 5433 en el host: el 5432 lo ocupa el proyecto 10.
+      - "5433:5432"
+    # RAM del contenedor acotada a proposito. Asi el page cache del SO (que vive
+    # dentro del contenedor, en la VM de Docker) tambien es finito y la evicion
+    # de los dos niveles de cache se puede demostrar. Ver README.
+    mem_limit: 1g
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c track_io_timing=on
+      -c max_parallel_workers_per_gather=0
+    volumes:
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
