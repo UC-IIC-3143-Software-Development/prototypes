@@ -7,7 +7,10 @@ services:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: ecommerce
     ports:
-      - "3306:3306"
+      # 3308 en el host: cada proyecto con MySQL usa un puerto propio para que
+      # se puedan levantar todos a la vez y ningun script se conecte a la base
+      # de otro. Ver la tabla de puertos en el README de la raiz.
+      - "3308:3306"
     volumes:
       - ./init_db.sql:/docker-entrypoint-initdb.d/init.sql
 

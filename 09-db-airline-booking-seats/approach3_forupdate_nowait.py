@@ -7,9 +7,11 @@ from utils import db_config, generate_users, print_seats, setup_database
 
 
 def book(user_id, user_name):
-    conn = mysql.connector.connect(**db_config)
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
     try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
         cursor.execute("START TRANSACTION")
         # FOR UPDATE NOWAIT: Pessimistic locking with no wait
         try:
@@ -45,11 +47,14 @@ def book(user_id, user_name):
             return None, user_name
     except mysql.connector.Error as error:
         print(f"Error booking seat for {user_name}: {error}")
-        cursor.execute("ROLLBACK")
+        if cursor:
+            cursor.execute("ROLLBACK")
         return None, user_name
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 def main():

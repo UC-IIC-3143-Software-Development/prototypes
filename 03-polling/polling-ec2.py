@@ -48,4 +48,6 @@ def serve_html():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # 5001: el 5000 lo usa 04-streaming-logs, asi que los dos pueden correr a
+    # la vez. Ver la tabla de puertos en el README de la raiz.
+    app.run(debug=True, host="0.0.0.0", port=5001)

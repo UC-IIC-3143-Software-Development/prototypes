@@ -11,7 +11,10 @@ services:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: counter_db
     ports:
-      - "3306:3306"
+      # 3307 en el host: cada proyecto con MySQL usa un puerto propio para que
+      # se puedan levantar todos a la vez y ningun script se conecte a la base
+      # de otro. Ver la tabla de puertos en el README de la raiz.
+      - "3307:3306"
     command:
       - --max-connections=150
     volumes:

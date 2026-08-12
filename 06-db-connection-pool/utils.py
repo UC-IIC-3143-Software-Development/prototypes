@@ -3,6 +3,7 @@ from mysql.connector import pooling
 
 db_config = {
     "host": "localhost",
+    "port": 3307,
     "user": "root",
     "password": "password",
     "database": "counter_db",
