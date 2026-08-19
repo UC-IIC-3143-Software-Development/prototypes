@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat: historial por REST, tiempo real por WebSocket</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        background: #1a1d21;
+        color: #e8eaed;
+        font: 17px/1.45 -apple-system, "Segoe UI", Arial, sans-serif;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        flex-wrap: wrap;
+        padding: 10px 16px;
+        background: #24272c;
+        border-bottom: 2px solid #3a3f45;
+      }
+      header b {
+        font-size: 19px;
+      }
+      button {
+        font-size: 16px;
+        padding: 7px 12px;
+        border: 1px solid #4c5359;
+        border-radius: 5px;
+        background: #343a40;
+        color: #e8eaed;
+        cursor: pointer;
+      }
+      button:hover:enabled {
+        background: #434a51;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      label {
+        cursor: pointer;
+      }
+      #status {
+        font-weight: bold;
+      }
+      #status.on {
+        color: #4ade80;
+      }
+      #status.off {
+        color: #f87171;
+      }
+      #status.load {
+        color: #fbbf24;
+      }
+      #banner {
+        padding: 10px 16px;
+        background: #7f1d1d;
+        color: #fff;
+        font-weight: bold;
+      }
+      #banner.hidden {
+        display: none;
+      }
+      main {
+        display: grid;
+        /* La columna de la derecha es ancha a proposito: las lineas del merge
+           son lo que hay que poder leer desde el fondo del aula. */
+        grid-template-columns: 165px 1fr 470px;
+        min-height: 0;
+      }
+      aside {
+        background: #202429;
+        padding: 12px;
+        overflow-y: auto;
+        border-right: 2px solid #3a3f45;
+      }
+      aside h3 {
+        margin: 4px 0 8px;
+        font-size: 13px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #9aa4ad;
+      }
+      .chan {
+        display: block;
+        width: 100%;
+        text-align: left;
+        margin-bottom: 4px;
+        background: none;
+        border: none;
+      }
+      .chan.sel {
+        background: #3b4c6b;
+      }
+      .member {
+        padding: 2px 0;
+        color: #cfd6dd;
+      }
+      section {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-height: 0;
+      }
+      #more {
+        margin: 8px auto;
+      }
+      #messages {
+        overflow-y: auto;
+        padding: 4px 16px 16px;
+      }
+      .msg {
+        padding: 5px 0;
+        border-top: 1px solid #2b3037;
+      }
+      .head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        color: #9aa4ad;
+      }
+      .author {
+        font-size: 16px;
+        font-weight: bold;
+        color: #e8eaed;
+      }
+      /* Lo mas importante de la pantalla: de que canal de datos vino cada
+         mensaje. Mismo objeto, mismos campos, dos transportes distintos. */
+      .badge {
+        font-size: 15px;
+        font-weight: bold;
+        padding: 1px 7px;
+        border-radius: 4px;
+      }
+      .badge.API {
+        background: #7c4a03;
+        color: #ffd28a;
+        border: 1px solid #f0a02a;
+      }
+      .badge.WS {
+        background: #06402b;
+        color: #7ff0b5;
+        border: 1px solid #22c55e;
+      }
+      form {
+        display: flex;
+        gap: 8px;
+        padding: 12px 16px;
+        background: #24272c;
+        border-top: 2px solid #3a3f45;
+      }
+      #text {
+        flex: 1;
+        font-size: 17px;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #4c5359;
+        background: #1a1d21;
+        color: #e8eaed;
+      }
+      #log {
+        background: #15181b;
+        border-right: none;
+        border-left: 2px solid #3a3f45;
+        font: 15px/1.55 ui-monospace, Menlo, Consolas, monospace;
+      }
+      .line {
+        padding: 2px 0;
+        border-bottom: 1px solid #23282d;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .line .t {
+        color: #6b7580;
+      }
+      .rest {
+        color: #ffd28a;
+      }
+      .ws {
+        color: #7ff0b5;
+      }
+      .merge {
+        color: #93c5fd;
+        font-weight: bold;
+      }
+      .warn {
+        color: #fca5a5;
+        font-weight: bold;
+      }
+      .info {
+        color: #aeb6bd;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>#<span id="chan-name">-</span></b>
+      <span>yo: <b id="me">-</b></span>
+      <span id="status" class="off">desconectado</span>
+      <span>en vivo por WS en este canal: <b id="frames">0</b></span>
+      <button id="cut">cortar WS</button>
+      <button id="rec">reconectar</button>
+      <label>
+        <input type="checkbox" id="naive" />
+        modo ingenuo (REST primero, WS despues)
+      </label>
+    </header>
+
+    <div id="banner" class="hidden">
+      WS caido: no estas recibiendo nada. Lo que ves en pantalla es viejo.
+    </div>
+
+    <main>
+      <aside>
+        <h3>Canales</h3>
+        <div id="channels"></div>
+        <h3 style="margin-top: 18px">En este canal</h3>
+        <div id="members"></div>
+      </aside>
+
+      <section>
+        <button id="more">cargar mas (?before=)</button>
+        <div id="messages"></div>
+        <form id="form">
+          <input id="text" autocomplete="off" placeholder="escribi un mensaje" />
+          <button type="submit">enviar</button>
+        </form>
+      </section>
+
+      <aside id="log"></aside>
+    </main>
+
+    <script>
+      const PAGE = 50;
+      // El nombre sale de ?user=ana si esta en la URL: en clase abris las dos
+      // pestanas ya bautizadas en vez de tipear en dos dialogos.
+      const pedido =
+        new URLSearchParams(location.search).get("user") ||
+        prompt("Tu nombre de usuario:");
+      const me = (pedido || "anon").trim() || "anon";
+      document.getElementById("me").textContent = me;
+
+      // Estado del canal abierto. `phase` manda: mientras es BUFFERING los
+      // mensajes que llegan por WS NO se pintan, se guardan en `buffer`.
+      const st = {
+        channel: null,
+        rendered: [],
+        buffer: [],
+        lastSeenId: null,
+        hasMoreOld: true,
+        phase: "DISCONNECTED", // BUFFERING | LIVE | DISCONNECTED
+        frames: 0,
+      };
+      let ws = null;
+      let ackSubscribe = null; // resuelve cuando llega el frame `subscribed`
+
+      const $ = (id) => document.getElementById(id);
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      function el(tag, cls, text) {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text !== undefined) n.textContent = text;
+        return n;
+      }
+
+      function log(text, kind = "info") {
+        const line = el("div", "line");
+        line.appendChild(el("span", "t", new Date().toLocaleTimeString() + "  "));
+        line.appendChild(el("span", kind, text));
+        $("log").appendChild(line);
+        $("log").scrollTop = $("log").scrollHeight;
+      }
+
+      // ---------- REST: el historial, o sea lo que paso antes de conectarme ----------
+
+      async function getMessages(params) {
+        const q = new URLSearchParams(params);
+        q.set("limit", PAGE);
+        const url = `/api/channels/${st.channel}/messages?${q}`;
+        const data = await (await fetch(url)).json();
+        log(`GET ${url} -> ${data.messages.length} mensajes, has_more=${data.has_more}`, "rest");
+        return data;
+      }
+
+      // ---------- WebSocket: lo que esta pasando ahora ----------
+
+      function connect() {
+        // El socket anterior se cierra y se queda sin handlers ANTES de abrir el
+        // nuevo. Si no, quedan dos vivos: cada mensaje llega dos veces y el
+        // boton "cortar WS" corta uno solo, o sea que no corta nada.
+        if (ws) {
+          ws.onmessage = ws.onclose = null;
+          ws.close();
+          ws = null;
+        }
+        return new Promise((resolve) => {
+          // wss:// si la pagina vino por https: el browser bloquea un ws://
+          // adentro de una pagina segura y la conexion no se abre nunca.
+          const proto = location.protocol === "https:" ? "wss:" : "ws:";
+          const sock = new WebSocket(
+            `${proto}//${location.host}/ws?user=${encodeURIComponent(me)}`,
+          );
+          ws = sock;
+          sock.onopen = () => {
+            log("WS conectado", "ws");
+            resolve();
+          };
+          sock.onmessage = (ev) => onFrame(JSON.parse(ev.data));
+          sock.onclose = () => {
+            st.phase = "DISCONNECTED";
+            log("WS cerrado", "warn");
+            if (ackSubscribe) ackSubscribe(null), (ackSubscribe = null);
+            paint();
+            resolve(); // si se cerro antes de abrir, que el await no quede colgado
+          };
+        });
+      }
+
+      function onFrame(f) {
+        if (f.type === "subscribed") {
+          log(`WS <- subscribed ${f.channel_id} latest_id=${f.latest_id}`, "ws");
+          renderMembers(f.members);
+          if (ackSubscribe) ackSubscribe(f), (ackSubscribe = null);
+        } else if (f.type === "message") {
+          const m = f.message;
+          // Al cambiar de canal siguen llegando frames del canal anterior hasta
+          // que el server procesa el subscribe nuevo. Para eso cada mensaje
+          // trae su channel_id: sin este filtro terminan pintados en el canal
+          // equivocado, o peor, mergeados desde el buffer.
+          if (m.channel_id !== st.channel) {
+            log(`WS <- message id=${m.id} de #${m.channel_id}: no es mi canal, descartado`, "warn");
+            return;
+          }
+          // Este contador es la tesis en un numero: al abrir el canal arranca en
+          // 0 y toda la conversacion en pantalla vino del REST. Tiene que dar
+          // igual que la cantidad de badges verdes que se ven.
+          st.frames++;
+          $("frames").textContent = st.frames;
+          if (st.phase === "LIVE") {
+            log(`WS <- message id=${m.id} de ${m.author}`, "ws");
+            st.rendered.push({ ...m, from: "WS" });
+            st.lastSeenId = m.id;
+            paint(true);
+          } else {
+            st.buffer.push(m);
+            log(`WS <- message id=${m.id} BUFFEREADO (${st.buffer.length} en el buffer)`, "ws");
+          }
+        } else if (f.type === "presence") {
+          if (f.channel_id !== st.channel) return; // presencia del canal que deje
+          log(`WS <- ${f.user} ${f.event === "join" ? "entro" : "salio"}`, "ws");
+          renderMembers(f.members);
+        } else if (f.type === "error") {
+          log("WS <- error: " + f.detail, "warn");
+        }
+      }
+
+      function subscribe(channelId) {
+        return new Promise((resolve) => {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return resolve(null);
+          ackSubscribe = resolve;
+          ws.send(JSON.stringify({ type: "subscribe", channel_id: channelId }));
+          log(`WS -> subscribe ${channelId}`, "ws");
+        });
+      }
+
+      // ---------- La costura entre los dos canales ----------
+
+      function dedup(list) {
+        const byId = new Map(list.map((m) => [m.id, m]));
+        return [...byId.values()].sort((a, b) => a.id - b.id);
+      }
+
+      // Una sola apertura o reconexion a la vez. Las dos esperan varios awaits
+      // (conectar, el ack del subscribe, el fetch) y si se solapan cruzan el ack
+      // de un canal con el historial del otro: la pantalla dice #random mientras
+      // el server te tiene suscripto a #general y no llega nada en vivo.
+      let abriendo = false;
+
+      async function openChannel(id) {
+        if (abriendo) {
+          log(`#${id}: ignorado, hay una apertura en curso`, "warn");
+          return;
+        }
+        abriendo = true;
+        try {
+          st.channel = id;
+          st.rendered = [];
+          st.buffer = [];
+          st.lastSeenId = null;
+          st.hasMoreOld = true;
+          st.phase = "BUFFERING";
+          st.frames = 0; // el contador es por canal, igual que los badges
+          $("frames").textContent = 0;
+          $("chan-name").textContent = id;
+          paint();
+          renderChannels();
+          if (!ws || ws.readyState !== WebSocket.OPEN) await connect();
+
+          let ack, page;
+          if ($("naive").checked) {
+            // MODO INGENUO, el bug a proposito: pedir el historial y suscribirse
+            // despues. Todo lo que alguien escriba en el medio no entra ni en el
+            // historial (el SELECT ya paso) ni en el buffer (no hay suscripcion):
+            // hueco permanente e invisible hasta que alguien recargue.
+            log("modo ingenuo: REST primero, suscripcion despues", "warn");
+            page = await getMessages({});
+            log("ventana de 800 ms: lo que se escriba ahora se pierde", "warn");
+            await sleep(800);
+            ack = await subscribe(id);
+          } else {
+            // ORDEN CORRECTO y contraintuitivo: suscribirse PRIMERO y recien
+            // despues pedir el historial. No elimina el solapamiento, lo
+            // GARANTIZA: un mensaje escrito en el medio cae en los dos lados. Y
+            // un solapamiento se deduplica por id, mientras que un hueco no se
+            // puede inventar. Por eso tambien se espera el ack `subscribed`:
+            // ws.send() no garantiza que el server ya te haya suscripto.
+            ack = await subscribe(id);
+            page = await getMessages({});
+          }
+          if (!ack) return; // el socket se cayo mientras cargaba
+
+          const hist = page.messages.map((m) => ({ ...m, from: "API" }));
+          // Frontera: hasta aca llego el REST. El buffer aporta solo lo de mas alla.
+          const histMax = hist.length ? hist[hist.length - 1].id : (ack.latest_id ?? 0);
+          const nuevos = st.buffer.filter((m) => m.id > histMax);
+          const solapados = st.buffer.length - nuevos.length;
+          st.rendered = dedup([...hist, ...nuevos.map((m) => ({ ...m, from: "WS" }))]);
+          st.hasMoreOld = page.has_more;
+          st.lastSeenId = st.rendered.length
+            ? st.rendered[st.rendered.length - 1].id
+            : ack.latest_id;
+          log(
+            `merge: subscribed latest_id=${ack.latest_id} | REST llego hasta ${histMax}` +
+              ` | buffer arranca en ${st.buffer.length ? st.buffer[0].id : "-"}` +
+              ` | solapados descartados ${solapados} -> ${st.rendered.length} en pantalla`,
+            "merge",
+          );
+          st.buffer = [];
+          st.phase = "LIVE";
+          paint(true);
+        } finally {
+          abriendo = false;
+        }
+      }
+
+      async function reconnect() {
+        if (!st.channel || abriendo) return;
+        abriendo = true;
+        try {
+          st.buffer = [];
+          st.phase = "BUFFERING";
+          paint();
+          await connect();
+          const ack = await subscribe(st.channel);
+          if (!ack) return;
+
+          // Preguntar "desde donde" antes de bajar nada: latest_id contra lo
+          // ultimo que vi. Es el equivalente del RESUME de Discord, pero el
+          // replay lo hace el REST con ?after= en vez del socket.
+          const desde = st.lastSeenId ?? 0;
+          if (ack.latest_id !== null && ack.latest_id > desde) {
+            log(`hueco: me perdi ${ack.latest_id - desde} ids mientras estuve caido`, "merge");
+            let cursor = desde;
+            let more = true;
+            while (more) {
+              const page = await getMessages({ after: cursor });
+              if (!page.messages.length) break;
+              const trozo = page.messages.map((m) => ({ ...m, from: "API" }));
+              st.rendered = dedup([...st.rendered, ...trozo]);
+              cursor = page.messages[page.messages.length - 1].id;
+              more = page.has_more; // el hueco puede ser mas grande que una pagina
+            }
+            st.lastSeenId = cursor;
+          } else {
+            log("latest_id == lastSeenId: no me perdi nada", "merge");
+          }
+
+          const nuevos = st.buffer.filter((m) => m.id > (st.lastSeenId ?? 0));
+          st.rendered = dedup([...st.rendered, ...nuevos.map((m) => ({ ...m, from: "WS" }))]);
+          if (st.rendered.length) st.lastSeenId = st.rendered[st.rendered.length - 1].id;
+          st.buffer = [];
+          st.phase = "LIVE";
+          paint(true);
+        } finally {
+          abriendo = false;
+        }
+      }
+
+      async function loadMore() {
+        const oldest = st.rendered[0];
+        if (!oldest) return;
+        const canal = st.channel;
+        const alto = $("messages").scrollHeight;
+        const page = await getMessages({ before: oldest.id });
+        // Los ids son globales: si el canal cambio mientras viajaba la pagina,
+        // mergearla igual intercala mensajes del canal anterior entre estos.
+        if (canal !== st.channel) {
+          log(`pagina vieja de #${canal} descartada: cambio de canal`, "warn");
+          return;
+        }
+        const viejos = page.messages.map((m) => ({ ...m, from: "API" }));
+        st.rendered = dedup([...viejos, ...st.rendered]);
+        st.hasMoreOld = page.has_more;
+        // lastSeenId NO se toca: es la frontera de lo NUEVO, no de lo viejo.
+        paint();
+        $("messages").scrollTop += $("messages").scrollHeight - alto;
+      }
+
+      // ---------- Pintar ----------
+
+      function paint(abajo) {
+        const box = $("messages");
+        box.replaceChildren(
+          ...st.rendered.map((m) => {
+            const div = el("div", "msg");
+            const head = el("div", "head");
+            head.appendChild(el("span", "badge " + m.from, m.from));
+            head.appendChild(el("span", "author", m.author));
+            // El ts viene en UTC con Z: se muestra en hora local para que sea la
+            // misma hora que la del panel de eventos de la derecha.
+            const hora = new Date(m.ts).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            head.appendChild(el("span", null, hora));
+            head.appendChild(el("span", null, "#" + m.id));
+            div.appendChild(head);
+            div.appendChild(el("div", null, m.text)); // textContent: nada de innerHTML
+            return div;
+          }),
+        );
+        if (abajo) box.scrollTop = box.scrollHeight;
+
+        const s = $("status");
+        s.textContent =
+          st.phase === "LIVE"
+            ? "conectado"
+            : st.phase === "BUFFERING"
+              ? "cargando historial..."
+              : "desconectado";
+        s.className = st.phase === "LIVE" ? "on" : st.phase === "BUFFERING" ? "load" : "off";
+        $("banner").className = st.phase === "DISCONNECTED" ? "" : "hidden";
+        $("more").disabled = !st.hasMoreOld;
+        $("more").textContent = st.hasMoreOld
+          ? "cargar mas (?before=)"
+          : "no hay mas historial";
+      }
+
+      function renderMembers(members) {
+        $("members").replaceChildren(
+          ...members.map((u) => el("div", "member", (u === me ? "* " : "- ") + u)),
+        );
+      }
+
+      function renderChannels() {
+        for (const b of document.querySelectorAll(".chan")) {
+          b.className = "chan" + (b.dataset.id === st.channel ? " sel" : "");
+        }
+      }
+
+      // ---------- Arranque ----------
+
+      $("form").onsubmit = (ev) => {
+        ev.preventDefault();
+        const text = $("text").value.trim();
+        if (!text) return;
+        if (st.phase !== "LIVE") {
+          // Sin esta linea, con el WS cortado apretar Enter no hace NADA y
+          // parece que se colgo la pagina.
+          log("no se envia: el WS no esta conectado", "warn");
+          return;
+        }
+        // No se pinta nada local: el mensaje aparece cuando vuelve por el WS,
+        // que es lo que prueba que el id lo puso el servidor.
+        ws.send(JSON.stringify({ type: "send", channel_id: st.channel, text }));
+        $("text").value = "";
+      };
+      $("cut").onclick = () => ws && ws.close();
+      $("rec").onclick = reconnect;
+      $("more").onclick = loadMore;
+
+      (async () => {
+        const { channels } = await (await fetch("/api/channels")).json();
+        log(`GET /api/channels -> ${channels.length} canales`, "rest");
+        $("channels").replaceChildren(
+          ...channels.map((c) => {
+            const b = el("button", "chan", "# " + c.name);
+            b.dataset.id = c.id;
+            b.onclick = () => openChannel(c.id);
+            return b;
+          }),
+        );
+        await openChannel(channels[0].id);
+      })();
+    </script>
+  </body>
+</html>

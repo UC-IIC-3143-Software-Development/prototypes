@@ -5,3 +5,4 @@ mysql-connector-python==9.0.0
 Faker==27.0.0
 redis==5.0.8
 psycopg2-binary==2.9.9
+flask-sock==0.7.0
